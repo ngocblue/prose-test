@@ -53,7 +53,7 @@ jobs:
             --ipc=host \
             --init \
             --network=host \
-            -e APP_URL=http://host.docker.internal:8000 \
+            -e APP_URL=http://localhost:8000 \
             -e SHOPWARE_ADMIN_USERNAME=admin \
             -e SHOPWARE_ADMIN_PASSWORD=shopware \
             -v "$GITHUB_WORKSPACE:/app" \
