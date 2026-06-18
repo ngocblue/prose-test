@@ -38,7 +38,10 @@ jobs:
 
       - name: Install Playwright dependencies
         working-directory: tests/acceptance
-        run: npm ci
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm ci
 
       #- name: Start Shopware containers
       #  run: docker compose up -d
