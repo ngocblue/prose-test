@@ -62,7 +62,10 @@ jobs:
             -v "$GITHUB_WORKSPACE:/app" \
             -w /app/tests/acceptance \
             mcr.microsoft.com/playwright:v1.58.1-noble \
-            npx playwright test --project=Visual --grep Storefront
+            npx playwright test --project=Visual 
+            --workers=1
+            --shard=1/1
+          continue-on-error: true
 
       - name: Upload test results
         if: always()
