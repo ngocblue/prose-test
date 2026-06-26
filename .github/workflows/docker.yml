@@ -2,9 +2,9 @@ name: Run playwright in Docker
 
 on:
   workflow_dispatch:
-      inputs:
+    inputs:
       update-snapshots:
-        description: "Update snapshots?"
+        description: "Update snapshots? (Visual job only)"
         type: boolean
         default: false
       filter:
@@ -13,14 +13,80 @@ on:
         default: ""
 
 jobs:
-  visual-admin:
+  # ───────────────────────── Functional (Platform) ─────────────────────────
+  functional:
     runs-on: ubuntu-24.04
+    steps:
+      - name: Start Redis and Mailpit
+        run: |
+          docker run -d --name redis   -p 6379:6379 redis:alpine
+          docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
 
+      - name: Define environment
+        shell: bash
+        run: |
+            echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+            echo "MAILER_DSN=smtp://localhost:1025" >> $GITHUB_ENV
+            echo "MAILPIT_BASE_URL=http://localhost:8025" >> $GITHUB_ENV
+            echo "SHOPWARE_HTTP_CACHE_ENABLED=0" >> $GITHUB_ENV
+            echo "SHOPWARE_DISABLE_UPDATE_CHECK=true" >> $GITHUB_ENV
+            echo "BLUE_GREEN_DEPLOYMENT=1" >> $GITHUB_ENV
+            echo "ENABLE_SERVICES=0" >> $GITHUB_ENV
+
+      - name: Setup Shopware
+        uses: shopware/setup-shopware@main
+        with:
+            env: prod
+            mysql-version: "builtin"
+            shopware-version: v6.7.10.0
+            shopware-repository: shopware/shopware
+            install: true
+            install-admin: true
+            install-storefront: true
+
+      - name: Install Playwright dependencies
+        working-directory: tests/acceptance
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm ci
+
+      - name: Run functional tests in Playwright container
+        working-directory: tests/acceptance
+        continue-on-error: true
+        env:
+          FILTER: ${{ inputs.filter && format('--grep={0}', inputs.filter) || '' }}
+        run: |
+          docker run --rm \
+            --ipc=host \
+            --init \
+            --network=host \
+            -e APP_URL=http://localhost:8000 \
+            -e MAILPIT_BASE_URL=http://localhost:8025 \
+            -e SHOPWARE_ADMIN_USERNAME=admin \
+            -e SHOPWARE_ADMIN_PASSWORD=shopware \
+            -v "$GITHUB_WORKSPACE:/app" \
+            -w /app/tests/acceptance \
+            mcr.microsoft.com/playwright:v1.58.1-noble \
+            npx playwright test --project=Platform --workers=1 $FILTER
+
+      - name: Upload functional test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-functional-results
+          path: |
+            tests/acceptance/test-results/
+            tests/acceptance/playwright-report/
+          retention-days: 3
+
+  # ───────────────────────────── Visual ────────────────────────────────────
+  visual:
+    runs-on: ubuntu-24.04
     steps:
       - name: Define environment
         shell: bash
         run: |
-            echo "FEATURE_ALL=${{ inputs.major && 'major' }}" >> $GITHUB_ENV
             echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
             echo "MAILER_DSN=smtp://localhost:1025" >> $GITHUB_ENV
             echo "MAILPIT_BASE_URL=http://localhost:8025" >> $GITHUB_ENV
@@ -64,13 +130,13 @@ jobs:
             -v "$GITHUB_WORKSPACE:/app" \
             -w /app/tests/acceptance \
             mcr.microsoft.com/playwright:v1.58.1-noble \
-            npx playwright test --project=Visual --workers=1 --shard=1/1 $UPDATE_SNAPSHOTS $FILTER
+            npx playwright test --project=Visual --workers=1 $UPDATE_SNAPSHOTS $FILTER
 
-      - name: Upload test results
+      - name: Upload visual test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results
+          name: playwright-visual-results
           path: |
             tests/acceptance/test-results/
             tests/acceptance/playwright-report/
