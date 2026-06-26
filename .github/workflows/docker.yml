@@ -2,6 +2,15 @@ name: Run playwright in Docker
 
 on:
   workflow_dispatch:
+      inputs:
+      update-snapshots:
+        description: "Update snapshots?"
+        type: boolean
+        default: false
+      filter:
+        description: "Filter passed to Playwright's --grep input."
+        type: string
+        default: ""
 
 jobs:
   visual-admin:
@@ -31,11 +40,6 @@ jobs:
             install-admin: true
             install-storefront: true
 
-      # - name: Stop mysql and symfony server
-      #   run: |
-      #     sudo systemctl stop mysql
-      #     symfony server:stop   
-
       - name: Install Playwright dependencies
         working-directory: tests/acceptance
         run: |
@@ -43,15 +47,13 @@ jobs:
           npm config set fetch-retry-mintimeout 20000
           npm ci
 
-      #- name: Start Shopware containers
-      #  run: docker compose up -d
-
       - name: Run visual tests in Playwright container
         working-directory: tests/acceptance
+        continue-on-error: true
+        env:
+          UPDATE_SNAPSHOTS: ${{ inputs.update-snapshots && '--update-snapshots' || '' }}
+          FILTER: ${{ inputs.filter && format('--grep={0}', inputs.filter) || '' }}
         run: |
-          # docker compose up -d
-          # docker compose ps
-          # docker compose run -d web #no such service called web
           docker run --rm \
             --ipc=host \
             --init \
@@ -62,10 +64,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/app" \
             -w /app/tests/acceptance \
             mcr.microsoft.com/playwright:v1.58.1-noble \
-            npx playwright test --project=Visual 
-            --workers=1
-            --shard=1/1
-          continue-on-error: true
+            npx playwright test --project=Visual --workers=1 --shard=1/1 $UPDATE_SNAPSHOTS $FILTER
 
       - name: Upload test results
         if: always()
