@@ -94,7 +94,7 @@ jobs:
         if: ${{ inputs.update-snapshots && steps.diff.outputs.changed == 'true' && steps.create-pr-token.outputs.token != '' }}
         uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
         with:
-          token: ${{ steps.create-pr-token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           add-paths: |
             .gitignore
             tests/acceptance/tests/**/*-snapshots/*.png
