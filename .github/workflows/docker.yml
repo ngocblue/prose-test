@@ -1,3 +1,8 @@
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
 name: Run playwright in Docker
 
 on:
@@ -26,7 +31,6 @@ jobs:
             echo "SHOPWARE_DISABLE_UPDATE_CHECK=true" >> $GITHUB_ENV
             echo "BLUE_GREEN_DEPLOYMENT=1" >> $GITHUB_ENV
             echo "ENABLE_SERVICES=0" >> $GITHUB_ENV
-
       - name: Setup Shopware
         uses: shopware/setup-shopware@main
         with:
@@ -44,7 +48,6 @@ jobs:
           npm config set fetch-retries 5
           npm config set fetch-retry-mintimeout 20000
           npm ci
-
       - name: Run visual tests in Playwright container
         working-directory: tests/acceptance
         continue-on-error: true
@@ -63,7 +66,6 @@ jobs:
             -w /app/tests/acceptance \
             mcr.microsoft.com/playwright:v1.58.1-noble \
             npx playwright test --project=Visual --workers=1 $UPDATE_SNAPSHOTS $FILTER
-
       - name: Upload visual test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -73,3 +75,34 @@ jobs:
             tests/acceptance/test-results/
             tests/acceptance/playwright-report/
           retention-days: 3
+      - name: Create token for PR
+        if: ${{ inputs.update-snapshots }}
+        uses: shopware/octo-sts-action@main
+        id: create-pr-token
+        with:
+          scope: shopware
+          identity: CreatePR
+        continue-on-error: true
+
+      - name: Check for snapshot changes
+        if: ${{ inputs.update-snapshots }}
+        id: diff
+        shell: bash
+        run: git diff --exit-code tests/acceptance/tests/ || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        if: ${{ inputs.update-snapshots && steps.diff.outputs.changed == 'true' && steps.create-pr-token.outputs.token != '' }}
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          token: ${{ steps.create-pr-token.outputs.token }}
+          add-paths: |
+            .gitignore
+            tests/acceptance/tests/**/*-snapshots/*.png
+          branch: update-ats-snapshots-docker
+          branch-suffix: short-commit-hash
+          labels: |
+            domain/quality-ops
+          commit-message: "chore(ci): update acceptance test snapshots"
+          title: "chore(ci): update acceptance test snapshots (docker)"
+          body: "🤖 This PR updates acceptance test snapshots from the Docker run."
+        continue-on-error: true
