@@ -75,15 +75,6 @@ jobs:
             tests/acceptance/test-results/
             tests/acceptance/playwright-report/
           retention-days: 3
-      - name: Create token for PR
-        if: ${{ inputs.update-snapshots }}
-        uses: shopware/octo-sts-action@main
-        id: create-pr-token
-        with:
-          scope: shopware
-          identity: CreatePR
-        continue-on-error: true
-
       - name: Check for snapshot changes
         if: ${{ inputs.update-snapshots }}
         id: diff
@@ -91,17 +82,14 @@ jobs:
         run: git diff --exit-code tests/acceptance/tests/ || echo "changed=true" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
-        if: ${{ inputs.update-snapshots && steps.diff.outputs.changed == 'true' && steps.create-pr-token.outputs.token != '' }}
+        if: ${{ inputs.update-snapshots && steps.diff.outputs.changed == 'true' }}
         uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           add-paths: |
-            .gitignore
             tests/acceptance/tests/**/*-snapshots/*.png
           branch: update-ats-snapshots-docker
           branch-suffix: short-commit-hash
-          labels: |
-            domain/quality-ops
           commit-message: "chore(ci): update acceptance test snapshots"
           title: "chore(ci): update acceptance test snapshots (docker)"
           body: "🤖 This PR updates acceptance test snapshots from the Docker run."
